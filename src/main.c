@@ -38,6 +38,7 @@
 #include "compare_core.h"
 #include "core_interface.h"
 #include "debugger.h"
+#include "gdbstub.h"
 #include "m64p_types.h"
 #include "main.h"
 #include "osal_preproc.h"
@@ -80,6 +81,7 @@ static int   l_TestShotIdx = 0;          // index of next screenshot frame in li
 static int   l_SaveOptions = 1;          // save command-line options in configuration file (enabled by default)
 static int   l_CoreCompareMode = 0;      // 0 = disable, 1 = send, 2 = receive
 static int   l_LaunchDebugger = 0;
+static int   l_GDBStubPort = -1;
 
 static eCheatMode l_CheatMode = CHEAT_DISABLE;
 static char      *l_CheatNumList = NULL;
@@ -371,6 +373,7 @@ static void printUsage(const char *progname)
            "    --configdir (dir)      : force configation directory to (dir); should contain mupen64plus.cfg\n"
            "    --datadir (dir)        : search for shared data files (.ini files, languages, etc) in (dir)\n"
            "    --debug                : launch console-based debugger (requires core lib built for debugging)\n"
+           "    --gdbstub (port)       : start gdb stub server on (port) (requires core lib built for debugging)\n"
            "    --plugindir (dir)      : search for plugins in (dir)\n"
            "    --sshotdir (dir)       : set screenshot directory to (dir)\n"
            "    --gfx (plugin-spec)    : use gfx plugin given by (plugin-spec)\n"
@@ -700,6 +703,10 @@ static m64p_error ParseCommandLineMain(int argc, const char **argv)
         {
             l_LaunchDebugger = 1;
         }
+        else if (strcmp(argv[i], "--gdbstub") == 0 && ArgsLeft >= 1)
+        {
+            l_GDBStubPort = atoi(argv[i+1]);
+        }
         else if (strcmp(argv[i], "--core-compare-send") == 0)
         {
             l_CoreCompareMode = 1;
@@ -952,7 +959,7 @@ int main(int argc, char *argv[])
     compare_core_init(l_CoreCompareMode);
     
     /* Ensure that the core supports the debugger if necessary */
-    if (l_LaunchDebugger && !(g_CoreCapabilities & M64CAPS_DEBUGGER))
+    if ((l_LaunchDebugger || l_GDBStubPort >= 0) && !(g_CoreCapabilities & M64CAPS_DEBUGGER))
     {
         DebugMessage(M64MSG_ERROR, "can't use --debug feature with this Mupen64Plus core library.");
         DetachCoreLib();
@@ -1105,6 +1112,20 @@ int main(int argc, char *argv[])
         (*ConfigSetParameter)(l_ConfigCore, "EnableDebugger", M64TYPE_BOOL, &bEnableDebugger);
     }
 
+    /* Setup GDB stub */
+    if (l_GDBStubPort >= 0)
+    {
+        GDBStub_Init(l_GDBStubPort);
+        int bEnableDebugger = 1;
+        (*ConfigSetParameter)(l_ConfigCore, "EnableDebugger", M64TYPE_BOOL, &bEnableDebugger);
+    }
+    else
+    {
+        /* Set Core config parameter to disable debugger */
+        int bEnableDebugger = 0;
+        (*ConfigSetParameter)(l_ConfigCore, "EnableDebugger", M64TYPE_BOOL, &bEnableDebugger);
+    }
+
     /* Save the configuration file again, if necessary, to capture updated
        parameters from plugins. This is the last opportunity to save changes
        before the relatively long-running game. */
@@ -1129,6 +1150,9 @@ int main(int argc, char *argv[])
     /* Shut down and release the Core library */
     (*CoreShutdown)();
     DetachCoreLib();
+	
+    if (l_GDBStubPort >= 0)
+        GDBStub_Shutdown();
 
     /* free allocated memory */
     if (l_TestShotList != NULL)

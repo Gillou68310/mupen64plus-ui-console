@@ -99,6 +99,24 @@ ifeq ($(OS), OSX)
   endif
 endif
 
+# test for essential build dependencies
+ifeq ($(origin PKG_CONFIG), undefined)
+  PKG_CONFIG = $(CROSS_COMPILE)pkg-config
+  ifeq ($(shell which $(PKG_CONFIG) 2>/dev/null),)
+    $(error $(PKG_CONFIG) not found)
+  endif
+endif
+
+ifeq ($(origin FMT_CFLAGS) $(origin FMT_LDLIBS), undefined undefined)
+  ifeq ($(shell $(PKG_CONFIG) --modversion fmt 2>/dev/null),)
+    $(error No fmt development libraries found!)
+  endif
+  FMT_CFLAGS += $(shell $(PKG_CONFIG) --cflags fmt)
+  FMT_LDLIBS +=  $(shell $(PKG_CONFIG) --libs fmt)
+endif
+CFLAGS += $(FMT_CFLAGS)
+LDLIBS += $(FMT_LDLIBS)
+
 # test for presence of SDL
 ifeq ($(origin SDL_CFLAGS) $(origin SDL_LDLIBS), undefined undefined)
   SDL_CONFIG = $(CROSS_COMPILE)sdl2-config
@@ -117,7 +135,8 @@ CFLAGS += $(SDL_CFLAGS)
 LDLIBS += $(SDL_LDLIBS)
 
 ifeq ($(OS), MINGW)
-  LDLIBS += -mconsole
+  CFLAGS += -DFMT_HEADER_ONLY
+  LDLIBS += -mconsole -lws2_32
 endif
 
 ifeq ($(BIG_ENDIAN), 1)
@@ -159,6 +178,7 @@ endif
 ifneq ($(findstring $(MAKEFLAGS),s),s)
 ifndef V
 	Q_CC  = @echo '    CC  '$@;
+	Q_CXX = @echo '    CXX '$@;
 	Q_LD  = @echo '    LD  '$@;
 endif
 endif
@@ -170,7 +190,8 @@ RM       ?= rm -f
 INSTALL  ?= install
 MKDIR ?= mkdir -p
 COMPILE.c = $(Q_CC)$(CC) $(CFLAGS) $(CPPFLAGS) $(TARGET_ARCH) -c
-LINK.o = $(Q_LD)$(CC) $(CFLAGS) $(LDFLAGS) $(TARGET_ARCH)
+COMPILE.cc = $(Q_CXX)$(CXX) $(CFLAGS) $(CPPFLAGS) $(TARGET_ARCH) -c
+LINK.o = $(Q_LD)$(CXX) $(CFLAGS) $(LDFLAGS) $(TARGET_ARCH)
 
 ifeq ($(PIE), 1)
   CFLAGS += -fPIE
@@ -243,6 +264,7 @@ SOURCE = \
 	$(SRCDIR)/compare_core.c \
 	$(SRCDIR)/core_interface.c \
 	$(SRCDIR)/debugger.c \
+	$(SRCDIR)/gdbstub.cpp \
 	$(SRCDIR)/main.c \
 	$(SRCDIR)/plugin.c
 
@@ -258,6 +280,7 @@ endif
 
 # generate a list of object files build, make a temporary directory for them
 OBJECTS := $(patsubst $(SRCDIR)/%.c, $(OBJDIR)/%.o, $(filter %.c, $(SOURCE)))
+OBJECTS += $(patsubst $(SRCDIR)/%.cpp, $(OBJDIR)/%.o, $(filter %.cpp, $(SOURCE)))
 OBJDIRS = $(dir $(OBJECTS))
 $(shell $(MKDIR) $(OBJDIRS))
 
@@ -326,6 +349,9 @@ CFLAGS += -MD -MP
 # standard build rules
 $(OBJDIR)/%.o: $(SRCDIR)/%.c
 	$(COMPILE.c) -o $@ $<
+
+$(OBJDIR)/%.o: $(SRCDIR)/%.cpp
+	$(COMPILE.cc) -o $@ $<
 
 $(TARGET): $(OBJECTS)
 	$(LINK.o) $^ $(LOADLIBES) $(LDLIBS) -o $@

@@ -78,14 +78,14 @@
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>
       <Optimization>Disabled</Optimization>
-      <AdditionalIncludeDirectories>..\..\..\mupen64plus-core\src\api;..\..\..\mupen64plus-win32-deps\SDL2-2.0.10\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\..\..\mupen64plus-core\src\api;..\..\..\mupen64plus-win32-deps\SDL2-2.0.10\include;..\..\..\mupen64plus-win32-deps\fmt\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>WIN32;_DEBUG;_CONSOLE;_CRT_SECURE_NO_DEPRECATE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <BasicRuntimeChecks>EnableFastChecks</BasicRuntimeChecks>
       <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
       <WarningLevel>Level3</WarningLevel>
     </ClCompile>
     <Link>
-      <AdditionalDependencies>..\..\..\mupen64plus-win32-deps\SDL2-2.0.10\lib\x86\SDL2main.lib;..\..\..\mupen64plus-win32-deps\SDL2-2.0.10\lib\x86\SDL2.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>..\..\..\mupen64plus-win32-deps\SDL2-2.0.10\lib\x86\SDL2main.lib;..\..\..\mupen64plus-win32-deps\SDL2-2.0.10\lib\x86\SDL2.lib;..\..\..\mupen64plus-win32-deps\fmt\lib\x64\fmtd.lib;ws2_32.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <SubSystem>Console</SubSystem>
     </Link>
@@ -105,14 +105,14 @@ copy ..\..\..\mupen64plus-win32-deps\zlib-1.2.11\lib\x86\*.dll "$(OutDir)"
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <ClCompile>
       <Optimization>Disabled</Optimization>
-      <AdditionalIncludeDirectories>..\..\..\mupen64plus-core\src\api;..\..\..\mupen64plus-win32-deps\SDL2-2.0.10\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\..\..\mupen64plus-core\src\api;..\..\..\mupen64plus-win32-deps\SDL2-2.0.10\include;..\..\..\mupen64plus-win32-deps\fmt\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>WIN32;_DEBUG;_CONSOLE;_CRT_SECURE_NO_DEPRECATE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <BasicRuntimeChecks>EnableFastChecks</BasicRuntimeChecks>
       <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
       <WarningLevel>Level3</WarningLevel>
     </ClCompile>
     <Link>
-      <AdditionalDependencies>..\..\..\mupen64plus-win32-deps\SDL2-2.0.10\lib\x64\SDL2main.lib;..\..\..\mupen64plus-win32-deps\SDL2-2.0.10\lib\x64\SDL2.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>..\..\..\mupen64plus-win32-deps\SDL2-2.0.10\lib\x64\SDL2main.lib;..\..\..\mupen64plus-win32-deps\SDL2-2.0.10\lib\x64\SDL2.lib;..\..\..\mupen64plus-win32-deps\fmt\lib\x64\fmtd.lib;ws2_32.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <SubSystem>Console</SubSystem>
     </Link>
@@ -131,7 +131,7 @@ copy ..\..\..\mupen64plus-win32-deps\zlib-1.2.11\lib\x64\*.dll "$(OutDir)"
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <ClCompile>
-      <AdditionalIncludeDirectories>..\..\..\mupen64plus-core\src\api;..\..\..\mupen64plus-win32-deps\SDL2-2.0.10\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\..\..\mupen64plus-core\src\api;..\..\..\mupen64plus-win32-deps\SDL2-2.0.10\include;..\..\..\mupen64plus-win32-deps\fmt\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>WIN32;NDEBUG;_CONSOLE;_CRT_SECURE_NO_DEPRECATE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
       <WarningLevel>Level3</WarningLevel>
@@ -140,7 +140,7 @@ copy ..\..\..\mupen64plus-win32-deps\zlib-1.2.11\lib\x64\*.dll "$(OutDir)"
       <IntrinsicFunctions>true</IntrinsicFunctions>
     </ClCompile>
     <Link>
-      <AdditionalDependencies>..\..\..\mupen64plus-win32-deps\SDL2-2.0.10\lib\x86\SDL2main.lib;..\..\..\mupen64plus-win32-deps\SDL2-2.0.10\lib\x86\SDL2.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>..\..\..\mupen64plus-win32-deps\SDL2-2.0.10\lib\x86\SDL2main.lib;..\..\..\mupen64plus-win32-deps\SDL2-2.0.10\lib\x86\SDL2.lib;..\..\..\mupen64plus-win32-deps\fmt\lib\x64\fmtd.lib;ws2_32.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <SubSystem>Console</SubSystem>
       <OptimizeReferences>true</OptimizeReferences>
@@ -162,7 +162,7 @@ copy ..\..\..\mupen64plus-win32-deps\zlib-1.2.11\lib\x86\*.dll "$(OutDir)"
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <ClCompile>
-      <AdditionalIncludeDirectories>..\..\..\mupen64plus-core\src\api;..\..\..\mupen64plus-win32-deps\SDL2-2.0.10\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\..\..\mupen64plus-core\src\api;..\..\..\mupen64plus-win32-deps\SDL2-2.0.10\include;..\..\..\mupen64plus-win32-deps\fmt\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>WIN32;NDEBUG;_CONSOLE;_CRT_SECURE_NO_DEPRECATE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
       <WarningLevel>Level3</WarningLevel>
@@ -171,7 +171,7 @@ copy ..\..\..\mupen64plus-win32-deps\zlib-1.2.11\lib\x86\*.dll "$(OutDir)"
       <IntrinsicFunctions>true</IntrinsicFunctions>
     </ClCompile>
     <Link>
-      <AdditionalDependencies>..\..\..\mupen64plus-win32-deps\SDL2-2.0.10\lib\x64\SDL2main.lib;..\..\..\mupen64plus-win32-deps\SDL2-2.0.10\lib\x64\SDL2.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>..\..\..\mupen64plus-win32-deps\SDL2-2.0.10\lib\x64\SDL2main.lib;..\..\..\mupen64plus-win32-deps\SDL2-2.0.10\lib\x64\SDL2.lib;..\..\..\mupen64plus-win32-deps\fmt\lib\x64\fmtd.lib;ws2_32.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <SubSystem>Console</SubSystem>
       <OptimizeReferences>true</OptimizeReferences>
@@ -195,6 +195,7 @@ copy ..\..\..\mupen64plus-win32-deps\zlib-1.2.11\lib\x64\*.dll "$(OutDir)"
     <ClCompile Include="..\..\src\compare_core.c" />
     <ClCompile Include="..\..\src\core_interface.c" />
     <ClCompile Include="..\..\src\debugger.c" />
+    <ClCompile Include="..\..\src\gdbstub.cpp" />
     <ClCompile Include="..\..\src\main.c" />
     <ClCompile Include="..\..\src\osal_dynamiclib_win32.c" />
     <ClCompile Include="..\..\src\osal_files_win32.c" />
@@ -205,6 +206,7 @@ copy ..\..\..\mupen64plus-win32-deps\zlib-1.2.11\lib\x64\*.dll "$(OutDir)"
     <ClInclude Include="..\..\src\compare_core.h" />
     <ClInclude Include="..\..\src\core_interface.h" />
     <ClInclude Include="..\..\src\debugger.h" />
+    <ClInclude Include="..\..\src\gdbstub.h" />
     <ClInclude Include="..\..\src\main.h" />
     <ClInclude Include="..\..\src\osal_dynamiclib.h" />
     <ClInclude Include="..\..\src\osal_files.h" />
