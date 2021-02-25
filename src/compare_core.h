@@ -29,6 +29,7 @@ typedef enum {
 } CoreCompareMode;
 
 void compare_core_init(int mode);
+void compare_core_shutdown();
 
 #endif /* COMPARE_CORE_H */
 

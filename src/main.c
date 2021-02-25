@@ -1153,6 +1153,8 @@ int main(int argc, char *argv[])
     if (l_SaveOptions && (*ConfigHasUnsavedChanges)(NULL))
         (*ConfigSaveFile)();
 
+    compare_core_shutdown();
+
     /* Shut down and release the Core library */
     (*CoreShutdown)();
     DetachCoreLib();

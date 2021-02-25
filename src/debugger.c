@@ -71,7 +71,7 @@ static int num_breakpoints = 0;
 /*
  * Debugger callbacks.
  */
-void dbg_frontend_init() {
+void dbg_frontend_init(void) {
     breakpoints = (m64p_breakpoint *) malloc(BREAKPOINTS_MAX_NUMBER * sizeof(m64p_breakpoint));
     printf("Debugger initialized.\n");
 }
@@ -89,7 +89,7 @@ void dbg_frontend_update(unsigned int pc) {
     }
 }
 
-void dbg_frontend_vi() {
+void dbg_frontend_vi(void) {
     //printf("Debugger vertical int.\n");
 }
 
