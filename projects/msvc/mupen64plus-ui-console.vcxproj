@@ -123,7 +123,7 @@ copy ..\..\..\mupen64plus-video-glide64mk2\data\* "$(OutDir)"
 copy ..\..\..\mupen64plus-input-sdl\data\* "$(OutDir)"
 copy ..\..\..\mupen64plus-win32-deps\freetype-2.13.0\lib\x64\*.dll "$(OutDir)"
 copy ..\..\..\mupen64plus-win32-deps\libpng-1.6.39\lib\x64\*.dll "$(OutDir)"
-copy ..\..\..\mupen64plus-win32-deps\SDL2-2.2.26\lib\x64\*.dll "$(OutDir)"
+copy ..\..\..\mupen64plus-win32-deps\SDL2-2.26.3\lib\x64\*.dll "$(OutDir)"
 copy ..\..\..\mupen64plus-win32-deps\SDL2_net-2.2.0\lib\x64\*.dll "$(OutDir)"
 copy ..\..\..\mupen64plus-win32-deps\zlib-1.2.13\lib\x64\*.dll "$(OutDir)"
 </Command>

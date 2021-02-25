@@ -23,39 +23,100 @@
 #include <stdio.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <assert.h>
+
+#ifndef WIN32
+#include <unistd.h>
+#include <fcntl.h>
+#include <signal.h>
+#endif
 
 #include "compare_core.h"
 #include "core_interface.h"
 #include "m64p_types.h"
 #include "main.h"
 
+struct compare_data
+{
+    uint32_t tag;
+    uint32_t size;
+    uint64_t arg;
+};
+
 /* local variables */
 
-static FILE *fPipe = NULL;
+#ifdef WIN32
+#define pipename "\\\\.\\pipe\\LogPipe"
+static HANDLE pipe = INVALID_HANDLE_VALUE;
+#else
+static int fd = -1;
+#endif
 static int comp_reg_32[32];
 static long long comp_reg_64[32];
 static unsigned int old_op = 0;
 static int l_CoreCompareMode = CORE_COMPARE_DISABLE;
+static int errors = 0;
 
 static long long *ptr_reg = NULL;  /* pointer to the 64-bit general purpose registers in the core */
 static int       *ptr_cop0 = NULL; /* pointer to the 32-bit Co-processor 0 registers in the core */
 static long long *ptr_fgr = NULL;  /* pointer to the 64-bit floating-point registers in the core */ 
 static int       *ptr_PC = NULL;   /* pointer to 32-bit R4300 Program Counter */
+static FILE      *sync_file;
+
+#define BUFFER_SIZE 0x800000
+static char send_buffer[BUFFER_SIZE];
+static char recv_buffer[BUFFER_SIZE];
+static char tag[1024];
 
 /* local functions */
+static size_t read_pipe(void * ptr, size_t size, size_t count)
+{
+#ifdef WIN32
+    DWORD len = 0;
+    BOOL ret = 0;
+
+    ret = ReadFile(pipe, ptr, (DWORD)(count*size), &len, NULL);
+    if(ret == 0)
+        return 0;
+    else if(len != (DWORD)(count*size))
+        return 0;
+    else
+        return count;
+#else
+    ssize_t len = read(fd, ptr, (count*size));
+    if(len != (count*size))
+        return 0;
+    else
+        return count;
+#endif
+}
+
+static size_t write_pipe(void * ptr, size_t size, size_t count)
+{
+#ifdef WIN32
+    DWORD len = 0;
+    BOOL ret = 0;
+
+    ret = WriteFile(pipe, ptr, (DWORD)(count*size), &len, NULL);
+    if(ret == 0)
+        return 0;
+    else if(len != (DWORD)(count*size))
+        return 0;
+    else
+        return count;
+#else
+    ssize_t len = write(fd, ptr, (count*size));
+    if(len != (count*size))
+        return 0;
+    else
+        return count;
+#endif
+}
+
 static void stop_it(void)
 {
-    static int errors = 0;
-
     (*CoreDoCommand)(M64CMD_STOP, 0, NULL);
-
     errors++;
-#if !defined(WIN32)
-    #if defined(__i386__) || defined(__x86_64__)
-        if (errors > 7)
-            asm("int $3;");
-    #endif
-#endif
 }
 
 static void display_error(char *txt)
@@ -105,15 +166,181 @@ static void display_error(char *txt)
 
 static void compare_core_sync_data(int length, void *value)
 {
+    static uint8_t cpt = 0;
+    uint8_t _cpt = 0;
+
+    if(errors) return;
+
+    assert(l_CoreCompareMode != CORE_COMPARE_DISABLE);
     if (l_CoreCompareMode == CORE_COMPARE_RECV)
     {
-        if (fread(value, 1, length, fPipe) != length)
+        if (read_pipe(value, 1, length) != length)
+        {
             stop_it();
+            return;
+        }
+        if (write_pipe(&cpt, 1, 1) != 1)
+        {
+            stop_it();
+            return;
+        }
     }
-    else if (l_CoreCompareMode == CORE_COMPARE_SEND)
+    else
     {
-        if (fwrite(value, 1, length, fPipe) != length)
+        if (l_CoreCompareMode == CORE_COMPARE_SEND_RECORD)
+        {
+            fwrite(value, 1, length, sync_file);
+            fflush(sync_file);
+        }
+        else if (l_CoreCompareMode == CORE_COMPARE_SEND_REPLAY)
+        {
+            fread(value, 1, length, sync_file);
+        }
+
+        if (write_pipe(value, 1, length) != length)
+		{
             stop_it();
+            return;
+		}
+
+        if (read_pipe(&_cpt, 1, 1) != 1)
+        {
+            stop_it();
+            return;
+        }
+
+        if(_cpt != cpt)
+        {
+            DebugMessage(M64MSG_ERROR, "Compare sync data missmatch %d vs %d", _cpt, cpt);
+            stop_it();
+            return;
+        }
+    }
+    cpt++;
+}
+
+static int read_tag(char *buffer, uint32_t addr)
+{
+    char car = 0;
+    int i = 0;
+
+    do
+    {
+        car = DebugMemRead8(addr++);
+        *buffer++ = car;
+        i++;
+    }
+    while(car != 0);
+    return i;
+}
+
+static void read_buffer(char *buffer, uint32_t addr, uint32_t size)
+{
+    while(size > 0)
+    {
+      *buffer++ = DebugMemRead8(addr++);
+      size--;
+    }
+}
+
+static void print_buffer(char *buffer, uint32_t size)
+{
+    uint32_t i;
+    for(i=0; i<size; i++)
+    {
+      if((i%16)==0)
+        printf("\n");
+      printf("%02X ", buffer[i]);
+    }
+}
+
+static void compare_core_data(void *arg)
+{
+    struct compare_data *compare_data = (struct compare_data*)arg;
+    int length;
+    int64_t value;
+
+    if(errors) return;
+    assert(l_CoreCompareMode != CORE_COMPARE_DISABLE);
+
+    if (l_CoreCompareMode == CORE_COMPARE_RECV)
+    {
+        length = read_tag(tag, compare_data->tag);
+        if (read_pipe(recv_buffer, 1, length) != length)
+        {
+            DebugMessage(M64MSG_ERROR, "Compare data tag size missmatch %s vs %s", tag, recv_buffer);
+            stop_it();
+            return;
+        }
+
+        if(memcmp(tag, recv_buffer, length))
+        {
+            DebugMessage(M64MSG_ERROR, "Compare data tag missmatch %s vs %s", tag, recv_buffer);
+            stop_it();
+            return;
+        }
+
+        if(compare_data->size == 0) 
+        {
+            if (read_pipe(&value, 1, 8) != 8)
+            {
+                stop_it();
+                return;
+            }
+            if(value != compare_data->arg)
+            {
+                DebugMessage(M64MSG_ERROR, "Compare data value missmatch tag:%s 0x%8X vs 0x%8X", tag, compare_data->arg, value);
+                stop_it();
+                return;
+            }
+        }
+        else
+        {
+            length = compare_data->size;
+            read_buffer(send_buffer, (uint32_t)compare_data->arg, length);
+            if (read_pipe(recv_buffer, 1, length) != length)
+            {
+                DebugMessage(M64MSG_ERROR, "Compare data buffer size missmatch tag:%s", tag);
+                stop_it();
+                return;
+            }
+            if(memcmp(send_buffer, recv_buffer, length))
+            {
+                DebugMessage(M64MSG_ERROR, "Compare data buffer missmatch tag:%s:", tag);
+                print_buffer(send_buffer, length);
+                printf("\n");
+                print_buffer(recv_buffer, length);
+                stop_it();
+                return;
+            }
+        }
+    }
+    else
+    {
+        length = read_tag(tag, compare_data->tag);
+        if (write_pipe(tag, 1, length) != length)
+        {
+            stop_it();
+            return;
+        }
+        if(compare_data->size == 0)
+        {
+            if (write_pipe(&compare_data->arg, 1, 8) != 8)
+            {
+                stop_it();
+                return;
+            }
+        }
+        else
+        {
+            length = compare_data->size;
+            read_buffer(send_buffer, (uint32_t)compare_data->arg, length);
+            if (write_pipe(send_buffer, 1, length) != length)
+            {
+                stop_it();
+                return;
+            }
+        }
     }
 }
 
@@ -129,8 +356,8 @@ static void compare_core_check(unsigned int cur_opcode)
 
     if (l_CoreCompareMode == CORE_COMPARE_RECV)
     {
-        if (fread(comp_reg_32, sizeof(int), 4, fPipe) != 4)
-            printf("compare_core_check: fread() failed");
+        if (read_pipe(comp_reg_32, sizeof(int), 4) != 4)
+            printf("compare_core_check: read_pipe() failed");
         if (*ptr_PC != *comp_reg_32)
         {
             if (iFirst)
@@ -140,8 +367,8 @@ static void compare_core_check(unsigned int cur_opcode)
             }
             display_error("PC");
         }
-        if (fread (comp_reg_64, sizeof(long long int), 32, fPipe) != 32)
-            printf("compare_core_check: fread() failed");
+        if (read_pipe(comp_reg_64, sizeof(long long int), 32) != 32)
+            printf("compare_core_check: read_pipe() failed");
         if (memcmp(ptr_reg, comp_reg_64, 32*sizeof(long long int)) != 0)
         {
             if (iFirst)
@@ -151,8 +378,8 @@ static void compare_core_check(unsigned int cur_opcode)
             }
             display_error("gpr");
         }
-        if (fread(comp_reg_32, sizeof(int), 32, fPipe) != 32)
-            printf("compare_core_check: fread() failed");
+        if (read_pipe(comp_reg_32, sizeof(int), 32) != 32)
+            printf("compare_core_check: read_pipe() failed");
         if (memcmp(ptr_cop0, comp_reg_32, 32*sizeof(int)) != 0)
         {
             if (iFirst)
@@ -162,8 +389,8 @@ static void compare_core_check(unsigned int cur_opcode)
             }
             display_error("cop0");
         }
-        if (fread(comp_reg_64, sizeof(long long int), 32, fPipe) != 32)
-            printf("compare_core_check: fread() failed");
+        if (read_pipe(comp_reg_64, sizeof(long long int), 32) != 32)
+            printf("compare_core_check: read_pipe() failed");
         if (memcmp(ptr_fgr, comp_reg_64, 32*sizeof(long long int)))
         {
             if (iFirst)
@@ -181,12 +408,12 @@ static void compare_core_check(unsigned int cur_opcode)
           display_error();*/
         old_op = cur_opcode;
     }
-    else if (l_CoreCompareMode == CORE_COMPARE_SEND)
+    else
     {
-        if (fwrite(ptr_PC, sizeof(int), 4, fPipe) != 4 ||
-            fwrite(ptr_reg, sizeof(long long int), 32, fPipe) != 32 ||
-            fwrite(ptr_cop0, sizeof(int), 32, fPipe) != 32 ||
-            fwrite(ptr_fgr, sizeof(long long int), 32, fPipe) != 32)
+        if (write_pipe(ptr_PC, sizeof(int), 4) != 4 ||
+            write_pipe(ptr_reg, sizeof(long long int), 32) != 32 ||
+            write_pipe(ptr_cop0, sizeof(int), 32) != 32 ||
+            write_pipe(ptr_fgr, sizeof(long long int), 32) != 32)
             printf("compare_core_check: fwrite() failed");
         /*fwrite(&rdram[0x31280/4], 1, sizeof(int), f);
         fwrite(&FCR31, 4, 1, f);*/
@@ -196,19 +423,13 @@ static void compare_core_check(unsigned int cur_opcode)
 /* global functions */
 void compare_core_init(int mode)
 {
-#if defined(WIN32)
-    DebugMessage(M64MSG_VERBOSE, "core comparison feature not supported on Windows platform.");
-    return;
-#else
     /* set mode */
     l_CoreCompareMode = mode;
-    /* set callback functions in core */
-    if (DebugSetCoreCompare(compare_core_check, compare_core_sync_data) != M64ERR_SUCCESS)
-    {
-        l_CoreCompareMode = CORE_COMPARE_DISABLE;
-        DebugMessage(M64MSG_WARNING, "DebugSetCoreCompare() failed, core comparison disabled.");
+    sync_file = NULL;
+
+    if(l_CoreCompareMode == CORE_COMPARE_DISABLE)
         return;
-    }
+
     /* get pointers to emulated R4300 CPU registers */
     ptr_reg = (long long *) DebugGetCPUDataPtr(M64P_CPU_REG_REG);
     ptr_cop0 = (int *) DebugGetCPUDataPtr(M64P_CPU_REG_COP0);
@@ -216,15 +437,90 @@ void compare_core_init(int mode)
     /* open file handle to FIFO pipe */
     if (l_CoreCompareMode == CORE_COMPARE_RECV)
     {
-        mkfifo("compare_pipe", 0600);
+#ifdef WIN32
+        pipe = CreateNamedPipe(pipename, PIPE_ACCESS_INBOUND | PIPE_ACCESS_OUTBOUND, PIPE_WAIT, 1, BUFFER_SIZE, BUFFER_SIZE, 120 * 1000, NULL);
+
+        if (pipe == INVALID_HANDLE_VALUE)
+        {
+            l_CoreCompareMode = CORE_COMPARE_DISABLE;
+            DebugMessage(M64MSG_ERROR, "CreateNamedPipe() failed, core comparison disabled.");
+            return;
+        }
+        ConnectNamedPipe(pipe, NULL);
+#else
+        mkfifo("/tmp/compare_pipe", 0600);
         DebugMessage(M64MSG_INFO, "Core Comparison Waiting to read pipe.");
-        fPipe = fopen("compare_pipe", "r");
-    }
-    else if (l_CoreCompareMode == CORE_COMPARE_SEND)
-    {
-        DebugMessage(M64MSG_INFO, "Core Comparison Waiting to write pipe.");
-        fPipe = fopen("compare_pipe", "w");
-    }
+        fd = open("/tmp/compare_pipe", O_RDONLY);
+        if (fd < 0)
+        {
+            l_CoreCompareMode = CORE_COMPARE_DISABLE;
+            DebugMessage(M64MSG_ERROR, "fopen() failed, core comparison disabled.");
+            return;
+        }
 #endif
+    }
+    else
+    {
+#ifdef WIN32
+        pipe = CreateFile(pipename, GENERIC_READ | GENERIC_WRITE, 0, NULL, OPEN_EXISTING, 0, NULL);
+
+        if (pipe == INVALID_HANDLE_VALUE)
+        {
+            l_CoreCompareMode = CORE_COMPARE_DISABLE;
+            DebugMessage(M64MSG_ERROR, "CreateFile() failed, core comparison disabled.");
+            return;
+        }
+#else
+        signal(SIGPIPE, SIG_IGN);
+        DebugMessage(M64MSG_INFO, "Core Comparison Waiting to write pipe.");
+        fd = open("/tmp/compare_pipe", O_WRONLY);
+        if (fd < 0)
+        {
+            l_CoreCompareMode = CORE_COMPARE_DISABLE;
+            DebugMessage(M64MSG_ERROR, "fopen() failed, core comparison disabled.");
+            return;
+        }
+#endif
+        if (l_CoreCompareMode == CORE_COMPARE_SEND_RECORD)
+        {
+            sync_file = fopen("sync_data.bin", "wb");
+            if (sync_file == NULL)
+            {
+                DebugMessage(M64MSG_ERROR, "Failed to create sync_data.bin, disabling record mode...");
+                l_CoreCompareMode = CORE_COMPARE_SEND;
+            }
+        }
+        else if (l_CoreCompareMode == CORE_COMPARE_SEND_REPLAY)
+        {
+            sync_file = fopen("sync_data.bin", "rb");
+            if (sync_file == NULL)
+            {
+                DebugMessage(M64MSG_ERROR, "Failed to open sync_data.bin, disabling replay mode...");
+                l_CoreCompareMode = CORE_COMPARE_SEND;
+            }
+        }
+    }
+
+    /* set callback functions in core */
+    /*if (DebugSetCoreCompare(compare_core_check, compare_core_sync_data, compare_core_data) != M64ERR_SUCCESS)*/
+    if (DebugSetCoreCompare(NULL, compare_core_sync_data, compare_core_data) != M64ERR_SUCCESS)
+    {
+        DebugMessage(M64MSG_WARNING, "DebugSetCoreCompare() failed, core comparison disabled.");
+        compare_core_shutdown();
+        return;
+    }
+}
+
+void compare_core_shutdown()
+{
+    l_CoreCompareMode = CORE_COMPARE_DISABLE;
+#ifdef WIN32
+    if (pipe != INVALID_HANDLE_VALUE)
+        CloseHandle(pipe);
+#else
+    close(fd);
+#endif
+    if(sync_file)
+        fclose(sync_file);
 }
 

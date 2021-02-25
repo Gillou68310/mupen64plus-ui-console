@@ -24,11 +24,14 @@
 
 typedef enum {
   CORE_COMPARE_DISABLE = 0,
-  CORE_COMPARE_SEND = 1,
-  CORE_COMPARE_RECV = 2
+  CORE_COMPARE_SEND,
+  CORE_COMPARE_SEND_RECORD,
+  CORE_COMPARE_SEND_REPLAY,
+  CORE_COMPARE_RECV
 } CoreCompareMode;
 
 void compare_core_init(int mode);
+void compare_core_shutdown();
 
 #endif /* COMPARE_CORE_H */
 
