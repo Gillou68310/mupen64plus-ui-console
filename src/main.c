@@ -80,7 +80,7 @@ static const char *l_SaveStatePath = NULL;     // save state to load at startup
 static int  *l_TestShotList = NULL;      // list of screenshots to take for regression test support
 static int   l_TestShotIdx = 0;          // index of next screenshot frame in list
 static int   l_SaveOptions = 1;          // save command-line options in configuration file (enabled by default)
-static int   l_CoreCompareMode = 0;      // 0 = disable, 1 = send, 2 = receive
+static int   l_CoreCompareMode = CORE_COMPARE_DISABLE;
 static int   l_LaunchDebugger = 0;
 
 static eCheatMode l_CheatMode = CHEAT_DISABLE;
@@ -362,46 +362,48 @@ static void printUsage(const char *progname)
     printf("Usage: %s [parameters] [romfile]\n"
            "\n"
            "Parameters:\n"
-           "    --noosd                : disable onscreen display\n"
-           "    --osd                  : enable onscreen display\n"
-           "    --fullscreen           : use fullscreen display mode\n"
-           "    --windowed             : use windowed display mode\n"
-           "    --resolution (res)     : display resolution (640x480, 800x600, 1024x768, etc)\n"
-           "    --nospeedlimit         : disable core speed limiter (should be used with dummy audio plugin)\n"
-           "    --cheats (cheat-spec)  : enable or list cheat codes for the given rom file\n"
-           "    --corelib (filepath)   : use core library (filepath) (can be only filename or full path)\n"
-           "    --configdir (dir)      : force configation directory to (dir); should contain mupen64plus.cfg\n"
-           "    --datadir (dir)        : search for shared data files (.ini files, languages, etc) in (dir)\n"
-           "    --debug                : launch console-based debugger (requires core lib built for debugging)\n"
-           "    --plugindir (dir)      : search for plugins in (dir)\n"
-           "    --sshotdir (dir)       : set screenshot directory to (dir)\n"
-           "    --gfx (plugin-spec)    : use gfx plugin given by (plugin-spec)\n"
-           "    --audio (plugin-spec)  : use audio plugin given by (plugin-spec)\n"
-           "    --input (plugin-spec)  : use input plugin given by (plugin-spec)\n"
-           "    --rsp (plugin-spec)    : use rsp plugin given by (plugin-spec)\n"
-           "    --emumode (mode)       : set emu mode to: 0=Pure Interpreter 1=Interpreter 2=DynaRec\n"
-           "    --savestate (filepath) : savestate loaded at startup\n"
-           "    --testshots (list)     : take screenshots at frames given in comma-separated (list), then quit\n"
-           "    --set (param-spec)     : set a configuration variable, format: ParamSection[ParamName]=Value\n"
-           "    --gb-rom-{1,2,3,4}     : define GB cart rom to load inside transferpak {1,2,3,4}\n"
-           "    --gb-ram-{1,2,3,4}     : define GB cart ram to load inside transferpak {1,2,3,4}\n"
-           "    --dd-ipl-rom           : define 64DD IPL rom\n"
-           "    --dd-disk              : define disk to load into the disk drive\n"
-           "    --core-compare-send    : use the Core Comparison debugging feature, in data sending mode\n"
-           "    --core-compare-recv    : use the Core Comparison debugging feature, in data receiving mode\n"
-           "    --nosaveoptions        : do not save the given command-line options in configuration file\n"
-           "    --pif (filepath)       : use a binary PIF ROM (filepath) instead of HLE PIF\n"
-           "    --verbose              : print lots of information\n"
-           "    --help                 : see this help message\n\n"
-           "(plugin-spec):\n"
-           "    (pluginname)           : filename (without path) of plugin to find in plugin directory\n"
-           "    (pluginpath)           : full path and filename of plugin\n"
-           "    'dummy'                : use dummy plugin\n\n"
-           "(cheat-spec):\n"
-           "    'list'                 : show all of the available cheat codes\n"
-           "    'all'                  : enable all of the available cheat codes\n"
-           "    (codelist)             : a comma-separated list of cheat code numbers to enable,\n"
-           "                             with dashes to use code variables (ex 1-2 to use cheat 1 option 2)\n"
+           "    --noosd                    : disable onscreen display\n"
+           "    --osd                      : enable onscreen display\n"
+           "    --fullscreen               : use fullscreen display mode\n"
+           "    --windowed                 : use windowed display mode\n"
+           "    --resolution (res)         : display resolution (640x480, 800x600, 1024x768, etc)\n"
+           "    --nospeedlimit             : disable core speed limiter (should be used with dummy audio plugin)\n"
+           "    --cheats (cheat-spec)      : enable or list cheat codes for the given rom file\n"
+           "    --corelib (filepath)       : use core library (filepath) (can be only filename or full path)\n"
+           "    --configdir (dir)          : force configation directory to (dir); should contain mupen64plus.cfg\n"
+           "    --datadir (dir)            : search for shared data files (.ini files, languages, etc) in (dir)\n"
+           "    --debug                    : launch console-based debugger (requires core lib built for debugging)\n"
+           "    --plugindir (dir)          : search for plugins in (dir)\n"
+           "    --sshotdir (dir)           : set screenshot directory to (dir)\n"
+           "    --gfx (plugin-spec)        : use gfx plugin given by (plugin-spec)\n"
+           "    --audio (plugin-spec)      : use audio plugin given by (plugin-spec)\n"
+           "    --input (plugin-spec)      : use input plugin given by (plugin-spec)\n"
+           "    --rsp (plugin-spec)        : use rsp plugin given by (plugin-spec)\n"
+           "    --emumode (mode)           : set emu mode to: 0=Pure Interpreter 1=Interpreter 2=DynaRec\n"
+           "    --savestate (filepath)     : savestate loaded at startup\n"
+           "    --testshots (list)         : take screenshots at frames given in comma-separated (list), then quit\n"
+           "    --set (param-spec)         : set a configuration variable, format: ParamSection[ParamName]=Value\n"
+           "    --gb-rom-{1,2,3,4}         : define GB cart rom to load inside transferpak {1,2,3,4}\n"
+           "    --gb-ram-{1,2,3,4}         : define GB cart ram to load inside transferpak {1,2,3,4}\n"
+           "    --dd-ipl-rom               : define 64DD IPL rom\n"
+           "    --dd-disk                  : define disk to load into the disk drive\n"
+           "    --core-compare-send        : use the Core Comparison debugging feature, in data sending mode\n"
+           "    --core-compare-send-replay : use the Core Comparison debugging feature, in data sending mode, replaying sync data\n"
+           "    --core-compare-send-record : use the Core Comparison debugging feature, in data sending mode, recording sync data\n"
+           "    --core-compare-recv        : use the Core Comparison debugging feature, in data receiving mode\n"
+           "    --nosaveoptions            : do not save the given command-line options in configuration file\n"
+           "    --pif (filepath)           : use a binary PIF ROM (filepath) instead of HLE PIF\n"
+           "    --verbose                  : print lots of information\n"
+           "    --help                     : see this help message\n\n"
+           "(plugin-spec):\n"              
+           "    (pluginname)               : filename (without path) of plugin to find in plugin directory\n"
+           "    (pluginpath)               : full path and filename of plugin\n"
+           "    'dummy'                    : use dummy plugin\n\n"
+           "(cheat-spec):\n"               
+           "    'list'                     : show all of the available cheat codes\n"
+           "    'all'                      : enable all of the available cheat codes\n"
+           "    (codelist)                 : a comma-separated list of cheat code numbers to enable,\n"
+           "                                 with dashes to use code variables (ex 1-2 to use cheat 1 option 2)\n"
            "\n", progname);
 
     return;
@@ -705,11 +707,19 @@ static m64p_error ParseCommandLineMain(int argc, const char **argv)
         }
         else if (strcmp(argv[i], "--core-compare-send") == 0)
         {
-            l_CoreCompareMode = 1;
+            l_CoreCompareMode = CORE_COMPARE_SEND;
         }
         else if (strcmp(argv[i], "--core-compare-recv") == 0)
         {
-            l_CoreCompareMode = 2;
+            l_CoreCompareMode = CORE_COMPARE_RECV;
+        }
+        else if (strcmp(argv[i], "--core-compare-send-record") == 0)
+        {
+            l_CoreCompareMode = CORE_COMPARE_SEND_RECORD;
+        }
+        else if (strcmp(argv[i], "--core-compare-send-replay") == 0)
+        {
+            l_CoreCompareMode = CORE_COMPARE_SEND_REPLAY;
         }
 #define PARSE_GB_CART_PARAM(param, key) \
         else if (strcmp(argv[i], param) == 0) \
@@ -970,7 +980,7 @@ int main(int argc, char *argv[])
     }
 
     /* Ensure that the core supports comparison feature if necessary */
-    if (l_CoreCompareMode != 0 && !(g_CoreCapabilities & M64CAPS_CORE_COMPARE))
+    if (l_CoreCompareMode != CORE_COMPARE_DISABLE && !(g_CoreCapabilities & M64CAPS_CORE_COMPARE))
     {
         DebugMessage(M64MSG_ERROR, "can't use --core-compare feature with this Mupen64Plus core library.");
         DetachCoreLib();

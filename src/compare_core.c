@@ -23,6 +23,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <assert.h>
 
 #include "compare_core.h"
 #include "core_interface.h"
@@ -46,6 +47,7 @@ static long long *ptr_reg = NULL;  /* pointer to the 64-bit general purpose regi
 static int       *ptr_cop0 = NULL; /* pointer to the 32-bit Co-processor 0 registers in the core */
 static long long *ptr_fgr = NULL;  /* pointer to the 64-bit floating-point registers in the core */ 
 static int       *ptr_PC = NULL;   /* pointer to 32-bit R4300 Program Counter */
+static FILE      *pFile;
 
 /* local functions */
 static size_t read_pipe(void * ptr, size_t size, size_t count)
@@ -146,13 +148,24 @@ static void display_error(char *txt)
 
 static void compare_core_sync_data(int length, void *value)
 {
+    assert(l_CoreCompareMode != CORE_COMPARE_DISABLE);
     if (l_CoreCompareMode == CORE_COMPARE_RECV)
     {
         if (read_pipe(value, 1, length) != length)
             stop_it();
     }
-    else if (l_CoreCompareMode == CORE_COMPARE_SEND)
+    else
     {
+        if (l_CoreCompareMode == CORE_COMPARE_SEND_RECORD)
+        {
+            fwrite(value, 1, length, pFile);
+            fflush(pFile);
+        }
+        else if (l_CoreCompareMode == CORE_COMPARE_SEND_REPLAY)
+        {
+            fread(value, 1, length, pFile);
+        }
+
         if (write_pipe(value, 1, length) != length)
             stop_it();
     }
@@ -168,6 +181,7 @@ static void compare_core_check(unsigned int cur_opcode)
     /* get pointer to current R4300 Program Counter address */
     ptr_PC = (int *) DebugGetCPUDataPtr(M64P_CPU_PC); /* this changes for every instruction */
 
+    assert(l_CoreCompareMode != CORE_COMPARE_DISABLE);
     if (l_CoreCompareMode == CORE_COMPARE_RECV)
     {
         if (read_pipe(comp_reg_32, sizeof(int), 1) != 1)
@@ -183,7 +197,7 @@ static void compare_core_check(unsigned int cur_opcode)
         }
         if (read_pipe(comp_reg_64, sizeof(long long int), 32) != 32)
             printf("compare_core_check: read_pipe() failed");
-        if (memcmp(ptr_reg, comp_reg_64, 32*sizeof(long long int)) != 0)
+        /*if (memcmp(ptr_reg, comp_reg_64, 32*sizeof(long long int)) != 0)
         {
             if (iFirst)
             {
@@ -191,7 +205,7 @@ static void compare_core_check(unsigned int cur_opcode)
                 iFirst = 0;
             }
             display_error("gpr");
-        }
+        }*/
         if (read_pipe(comp_reg_32, sizeof(int), 32) != 32)
             printf("compare_core_check: read_pipe() failed");
         if (memcmp(ptr_cop0, comp_reg_32, 32*sizeof(int)) != 0)
@@ -222,7 +236,7 @@ static void compare_core_check(unsigned int cur_opcode)
           display_error();*/
         old_op = cur_opcode;
     }
-    else if (l_CoreCompareMode == CORE_COMPARE_SEND)
+    else
     {
         if (write_pipe(ptr_PC, sizeof(int), 1) != 1 ||
             write_pipe(ptr_reg, sizeof(long long int), 32) != 32 ||
@@ -240,13 +254,7 @@ void compare_core_init(int mode)
 {
     /* set mode */
     l_CoreCompareMode = mode;
-    /* set callback functions in core */
-    if (DebugSetCoreCompare(compare_core_check, compare_core_sync_data) != M64ERR_SUCCESS)
-    {
-        l_CoreCompareMode = CORE_COMPARE_DISABLE;
-        DebugMessage(M64MSG_WARNING, "DebugSetCoreCompare() failed, core comparison disabled.");
-        return;
-    }
+
     /* get pointers to emulated R4300 CPU registers */
     ptr_reg = (long long *) DebugGetCPUDataPtr(M64P_CPU_REG_REG);
     ptr_cop0 = (int *) DebugGetCPUDataPtr(M64P_CPU_REG_COP0);
@@ -260,38 +268,83 @@ void compare_core_init(int mode)
 
         if (pipe == INVALID_HANDLE_VALUE)
         {
+            l_CoreCompareMode = CORE_COMPARE_DISABLE;
             DebugMessage(M64MSG_ERROR, "CreateNamedPipe() failed, core comparison disabled.");
             return;
         }
         ConnectNamedPipe(pipe, NULL);
 #else
-        mkfifo("compare_pipe", 0600);
+        mkfifo("/tmp/compare_pipe", 0600); //Ignore fail if file exist
         DebugMessage(M64MSG_INFO, "Core Comparison Waiting to read pipe.");
-        fPipe = fopen("compare_pipe", "r");
+        fPipe = fopen("/tmp/compare_pipe", "r");
+        if (fPipe == NULL)
+        {
+            l_CoreCompareMode = CORE_COMPARE_DISABLE;
+            DebugMessage(M64MSG_ERROR, "fopen() failed, core comparison disabled.");
+            return;
+        }
 #endif
     }
-    else if (l_CoreCompareMode == CORE_COMPARE_SEND)
+    else
     {
 #ifdef WIN32
         pipe = CreateFile(pipename, GENERIC_READ | GENERIC_WRITE, 0, NULL, OPEN_EXISTING, 0, NULL);
 
         if (pipe == INVALID_HANDLE_VALUE)
         {
+            l_CoreCompareMode = CORE_COMPARE_DISABLE;
             DebugMessage(M64MSG_ERROR, "CreateFile() failed, core comparison disabled.");
             return;
         }
 #else
         DebugMessage(M64MSG_INFO, "Core Comparison Waiting to write pipe.");
-        fPipe = fopen("compare_pipe", "w");
+        fPipe = fopen("/tmp/compare_pipe", "w");
+        if (fPipe == NULL)
+        {
+            l_CoreCompareMode = CORE_COMPARE_DISABLE;
+            DebugMessage(M64MSG_ERROR, "fopen() failed, core comparison disabled.");
+            return;
+        }
 #endif
+        if (l_CoreCompareMode == CORE_COMPARE_SEND_RECORD)
+        {
+            pFile = fopen("sync_data.bin", "wb");
+            if (pFile == NULL)
+            {
+                DebugMessage(M64MSG_ERROR, "Failed to create sync_data.bin, disabling record mode...");
+                l_CoreCompareMode = CORE_COMPARE_SEND;
+            }
+        }
+        else if (l_CoreCompareMode == CORE_COMPARE_SEND_REPLAY)
+        {
+            pFile = fopen("sync_data.bin", "rb");
+            if (pFile == NULL)
+            {
+                DebugMessage(M64MSG_ERROR, "Failed to open sync_data.bin, disabling replay mode...");
+                l_CoreCompareMode = CORE_COMPARE_SEND;
+            }
+        }
+    }
+
+    /* set callback functions in core */
+    if (DebugSetCoreCompare(compare_core_check, compare_core_sync_data) != M64ERR_SUCCESS)
+    {
+        DebugMessage(M64MSG_WARNING, "DebugSetCoreCompare() failed, core comparison disabled.");
+        compare_core_shutdown();
+        return;
     }
 }
 
 void compare_core_shutdown()
 {
+    l_CoreCompareMode = CORE_COMPARE_DISABLE;
 #ifdef WIN32
     if (pipe != INVALID_HANDLE_VALUE)
         CloseHandle(pipe);
+#else
+    fclose(fPipe);
 #endif
+    if ((l_CoreCompareMode == CORE_COMPARE_SEND_RECORD) || (l_CoreCompareMode == CORE_COMPARE_SEND_REPLAY))
+        fclose(pFile);
 }
 
