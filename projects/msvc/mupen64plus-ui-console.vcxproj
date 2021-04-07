@@ -98,6 +98,7 @@ copy ..\..\..\mupen64plus-win32-deps\libpng-1.6.37\lib\x86\*.dll "$(OutDir)"
 copy ..\..\..\mupen64plus-win32-deps\SDL2-2.0.10\lib\x86\*.dll "$(OutDir)"
 copy ..\..\..\mupen64plus-win32-deps\SDL2_net-2.0.1\lib\x86\*.dll "$(OutDir)"
 copy ..\..\..\mupen64plus-win32-deps\zlib-1.2.11\lib\x86\*.dll "$(OutDir)"
+copy ..\..\..\mupen64plus-win32-deps\capstone\lib\x86\*.dll "$(OutDir)"
 </Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
@@ -126,6 +127,7 @@ copy ..\..\..\mupen64plus-win32-deps\libpng-1.6.37\lib\x64\*.dll "$(OutDir)"
 copy ..\..\..\mupen64plus-win32-deps\SDL2-2.0.10\lib\x64\*.dll "$(OutDir)"
 copy ..\..\..\mupen64plus-win32-deps\SDL2_net-2.0.1\lib\x64\*.dll "$(OutDir)"
 copy ..\..\..\mupen64plus-win32-deps\zlib-1.2.11\lib\x64\*.dll "$(OutDir)"
+copy ..\..\..\mupen64plus-win32-deps\capstone\lib\x64\*.dll "$(OutDir)"
 </Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
@@ -157,7 +159,7 @@ copy ..\..\..\mupen64plus-win32-deps\libpng-1.6.37\lib\x86\*.dll "$(OutDir)"
 copy ..\..\..\mupen64plus-win32-deps\SDL2-2.0.10\lib\x86\*.dll "$(OutDir)"
 copy ..\..\..\mupen64plus-win32-deps\SDL2_net-2.0.1\lib\x86\*.dll "$(OutDir)"
 copy ..\..\..\mupen64plus-win32-deps\zlib-1.2.11\lib\x86\*.dll "$(OutDir)"
-
+copy ..\..\..\mupen64plus-win32-deps\capstone\lib\x86\*.dll "$(OutDir)"
 </Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
@@ -189,6 +191,7 @@ copy ..\..\..\mupen64plus-win32-deps\libpng-1.6.37\lib\x64\*.dll "$(OutDir)"
 copy ..\..\..\mupen64plus-win32-deps\SDL2-2.0.10\lib\x64\*.dll "$(OutDir)"
 copy ..\..\..\mupen64plus-win32-deps\SDL2_net-2.0.1\lib\x64\*.dll "$(OutDir)"
 copy ..\..\..\mupen64plus-win32-deps\zlib-1.2.11\lib\x64\*.dll "$(OutDir)"
+copy ..\..\..\mupen64plus-win32-deps\capstone\lib\x64\*.dll "$(OutDir)"
 </Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
