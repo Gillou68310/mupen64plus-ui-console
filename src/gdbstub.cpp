@@ -66,9 +66,6 @@ using f64 = double;
 
 using VAddr = u64;
 
-using u128 = std::array<std::uint64_t, 2>;
-static_assert(sizeof(u128) == 16, "u128 must be 128 bits wide");
-
 constexpr int GDB_BUFFER_SIZE = 10000;
 
 constexpr char GDB_STUB_START = '$';
@@ -198,34 +195,6 @@ bool first_exception = true;
 #ifdef _WIN32
 WSADATA InitData;
 #endif
-
-/// Breakpoint Method
-enum class BreakpointType {
-    None,    ///< None
-    Execute, ///< Execution Breakpoint
-    Read,    ///< Read Breakpoint
-    Write,   ///< Write Breakpoint
-    Access   ///< Access (R/W) Breakpoint
-};
-
-struct BreakpointAddress {
-    VAddr address;
-    BreakpointType type;
-};
-
-struct Breakpoint {
-    int index;
-    bool active;
-    VAddr addr;
-    u64 len;
-    std::array<u8, 4> inst;
-};
-
-using BreakpointMap = std::map<VAddr, Breakpoint>;
-BreakpointMap breakpoints_execute;
-BreakpointMap breakpoints_read;
-BreakpointMap breakpoints_write;
-BreakpointMap breakpoints_access;
 } // Anonymous namespace
 
 
@@ -235,12 +204,6 @@ void PrintMsg(int level, const char* msg) {
 
 void Init(int port) {
     (*DebugSetCallbacks)(debugger_init, debugger_update, debugger_vi);
-
-    // Setup initial gdbstub status
-    breakpoints_execute.clear();
-    breakpoints_read.clear();
-    breakpoints_write.clear();
-    breakpoints_access.clear();
 
     // Start gdb server
     LOG_INFO("Starting GDB server on port {}...", port);
@@ -302,6 +265,11 @@ void Init(int port) {
 
 void Shutdown() {
     LOG_INFO("Stopping GDB ...");
+
+    int numBkpts = (*DebugGetState)(M64P_DBG_NUM_BREAKPOINTS);
+
+    for(int i = 0; i < numBkpts; i++)
+        (*DebugBreakpointCommand)(M64P_BKP_CMD_REMOVE_IDX, i, NULL);
 
     (*DebugSetRunState)(M64P_DBG_RUNSTATE_RUNNING);
     (*DebugSetCallbacks)(NULL, NULL, NULL);
@@ -545,45 +513,45 @@ static u8 CalculateChecksum(const u8* buffer, std::size_t length) {
 }
 
 /**
- * Get the map of breakpoints for a given breakpoint type.
- *
- * @param type Type of breakpoint map.
- */
-static BreakpointMap& GetBreakpointMap(BreakpointType type) {
-    switch (type) {
-    case BreakpointType::Execute:
-        return breakpoints_execute;
-    case BreakpointType::Read:
-        return breakpoints_read;
-    case BreakpointType::Write:
-        return breakpoints_write;
-    case BreakpointType::Access:
-        return breakpoints_access;
-    default:
-        return breakpoints_read;
-    }
-}
-
-/**
  * Remove the breakpoint from the given address of the specified type.
  *
  * @param type Type of breakpoint.
  * @param addr Address of breakpoint.
  */
-static void RemoveBreakpoint(BreakpointType type, VAddr addr) {
-    BreakpointMap& p = GetBreakpointMap(type);
+static bool RemoveBreakpoint(u8 type, VAddr addr) {
 
-    const auto bp = p.find(addr);
-    if (bp == p.end()) {
-        return;
+    u32 flags = M64P_BKP_FLAG_ENABLED | M64P_BKP_FLAG_LOG;
+
+    switch (type) {
+    case 0:
+    case 1:
+        flags |= M64P_BKP_FLAG_EXEC;
+        break;
+    case 2:
+        flags |= M64P_BKP_FLAG_WRITE;
+        break;
+    case 3:
+        flags |= M64P_BKP_FLAG_READ;
+        break;
+    case 4:
+        flags |= M64P_BKP_FLAG_WRITE | M64P_BKP_FLAG_READ;
+        break;
+    default:
+        return false;
+    }
+
+    int numBkps = (*DebugBreakpointLookup)((u32)addr, 1, flags);
+    if (numBkps < 0)
+    {
+        LOG_ERROR("Trying to remove non-existing breakpoint");
+        return false;
     }
 
     LOG_DEBUG("gdb: removed a breakpoint: {:016X} bytes at {:016X} of type {}",
-              bp->second.len, bp->second.addr, static_cast<int>(type));
+              4, addr, static_cast<int>(type));
 
-
-    (*DebugBreakpointCommand)(M64P_BKP_CMD_REMOVE_IDX, bp->second.index, NULL);
-    p.erase(addr);
+    (*DebugBreakpointCommand)(M64P_BKP_CMD_REMOVE_IDX, numBkps, NULL);
+    return true;
 }
 
 /**
@@ -648,8 +616,7 @@ static void HandleQuery() {
         SendReply("1");
     } else if (strncmp(query, "Supported", strlen("Supported")) == 0) {
         // PacketSize needs to be large enough for target xml
-        std::string buffer = "PacketSize=2000;qXfer:features:read+";
-        SendReply(buffer.c_str());
+        SendReply("PacketSize=2000;qXfer:features:read+");
     } else if (strncmp(query, "Xfer:features:read:target.xml:",
                        strlen("Xfer:features:read:target.xml:")) == 0) {
         SendReply(target_xml);
@@ -658,9 +625,7 @@ static void HandleQuery() {
         std::string buffer = fmt::format("TextSeg={:0x}", base_address);
         SendReply(buffer.c_str());
     } else if (strncmp(query, "fThreadInfo", strlen("fThreadInfo")) == 0) {
-        std::string val = "m";
-        val.pop_back();
-        SendReply(val.c_str());
+        SendReply("m0");
     } else if (strncmp(query, "sThreadInfo", strlen("sThreadInfo")) == 0) {
         SendReply("l");
     } else {
@@ -670,12 +635,12 @@ static void HandleQuery() {
 
 /// Handle set thread command from gdb client.
 static void HandleSetThread() {
-    SendReply("");
+    SendReply("OK");
 }
 
 /// Handle thread alive command from gdb client.
 static void HandleThreadAlive() {
-    SendReply("");
+    SendReply("OK");
 }
 
 /**
@@ -894,13 +859,7 @@ static void Continue() {
  * @param addr Address of breakpoint.
  * @param len Length of breakpoint.
  */
-static bool CommitBreakpoint(BreakpointType type, VAddr addr, u64 len) {
-    BreakpointMap& p = GetBreakpointMap(type);
-
-    Breakpoint breakpoint;
-    breakpoint.active = true;
-    breakpoint.addr = addr;
-    breakpoint.len = len;
+static bool CommitBreakpoint(u8 type, VAddr addr, u64 len) {
 
     m64p_breakpoint bkpt;
     bkpt.address = (u32)addr;
@@ -908,19 +867,26 @@ static bool CommitBreakpoint(BreakpointType type, VAddr addr, u64 len) {
     bkpt.flags = M64P_BKP_FLAG_ENABLED | M64P_BKP_FLAG_LOG;
 
     switch (type) {
-    case BreakpointType::Execute:
+    case 0:
+    case 1:
         bkpt.flags |= M64P_BKP_FLAG_EXEC;
         break;
-    case BreakpointType::Write:
+    case 2:
         bkpt.flags |= M64P_BKP_FLAG_WRITE;
         break;
-    case BreakpointType::Read:
+    case 3:
         bkpt.flags |= M64P_BKP_FLAG_READ;
         break;
-    case BreakpointType::Access:
+    case 4:
         bkpt.flags |= M64P_BKP_FLAG_WRITE | M64P_BKP_FLAG_READ;
         break;
     default:
+        return false;
+    }
+
+    if ((*DebugBreakpointLookup)(bkpt.address, (u32)len, bkpt.flags) >= 0)
+    {
+        LOG_ERROR("Trying to add already existing breakpoint");
         return false;
     }
 
@@ -931,36 +897,20 @@ static bool CommitBreakpoint(BreakpointType type, VAddr addr, u64 len) {
         return false;
     }
 
-    breakpoint.index = numBkps;
-    p.insert({addr, breakpoint});
-
     LOG_DEBUG("gdb: added {} breakpoint: {:016X} bytes at {:016X}",
-              static_cast<int>(type), breakpoint.len, breakpoint.addr);
+              static_cast<int>(type), len, addr);
 
     return true;
 }
 
 /// Handle add breakpoint command from gdb client.
 static void AddBreakpoint() {
-    BreakpointType type;
-
     u8 type_id = HexCharToValue(command_buffer[1]);
-    switch (type_id) {
-    case 0:
-    case 1:
-        type = BreakpointType::Execute;
-        break;
-    case 2:
-        type = BreakpointType::Write;
-        break;
-    case 3:
-        type = BreakpointType::Read;
-        break;
-    case 4:
-        type = BreakpointType::Access;
-        break;
-    default:
-        return SendReply("E01");
+
+    if (type_id > 4)
+    {
+        SendReply("E01");
+        return;
     }
 
     auto start_offset = command_buffer + 3;
@@ -968,45 +918,32 @@ static void AddBreakpoint() {
     VAddr addr = HexToLong(start_offset, static_cast<u64>(addr_pos - start_offset));
 
     start_offset = addr_pos + 1;
-    u64 len =
-        HexToLong(start_offset, static_cast<u64>((command_buffer + command_length) - start_offset));
+    u64 len = HexToLong(start_offset, static_cast<u64>((command_buffer + command_length) - start_offset));
 
-    if (!CommitBreakpoint(type, addr, len)) {
-        return SendReply("E02");
-    }
-
-    SendReply("OK");
+    if (!CommitBreakpoint(type_id, addr, len))
+        SendReply("E02");
+    else
+        SendReply("OK");
 }
 
 /// Handle remove breakpoint command from gdb client.
 static void RemoveBreakpoint() {
-    BreakpointType type;
-
     u8 type_id = HexCharToValue(command_buffer[1]);
-    switch (type_id) {
-    case 0:
-    case 1:
-        type = BreakpointType::Execute;
-        break;
-    case 2:
-        type = BreakpointType::Write;
-        break;
-    case 3:
-        type = BreakpointType::Read;
-        break;
-    case 4:
-        type = BreakpointType::Access;
-        break;
-    default:
-        return SendReply("E01");
+
+    if (type_id > 4)
+    {
+        SendReply("E01");
+        return;
     }
 
     auto start_offset = command_buffer + 3;
     auto addr_pos = std::find(start_offset, command_buffer + command_length, ',');
     VAddr addr = HexToLong(start_offset, static_cast<u64>(addr_pos - start_offset));
 
-    RemoveBreakpoint(type, addr);
-    SendReply("OK");
+    if(!RemoveBreakpoint(type_id, addr))
+        SendReply("E02");
+    else
+        SendReply("OK");
 }
 
 void HandlePacket(bool check) {
